@@ -1,5 +1,7 @@
 plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.0.0'
+    id 'application'
+    id("io.ktor.plugin") version "2.2.3"
 }
 
 group = 'org.example'
@@ -10,13 +12,30 @@ repositories {
 }
 
 dependencies {
+    implementation("com.varabyte.kotter:kotter-jvm:1.1.2")
+//    implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
+    implementation("com.github.ajalt.mordant:mordant:2.7.2")
+
+    // optional extensions for running animations with coroutines
+    implementation("com.github.ajalt.mordant:mordant-coroutines:2.7.1")
     testImplementation 'org.jetbrains.kotlin:kotlin-test'
-    implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
+    testImplementation("com.varabyte.kotterx:kotter-test-support-jvm:1.1.2")
 }
 
 test {
     useJUnitPlatform()
 }
+
 kotlin {
     jvmToolchain(17)
+}
+
+application {
+    mainClass.set("basics.MordantKt")
+}
+
+ktor {
+    fatJar {
+        archiveFileName.set("app.jar")
+    }
 }
