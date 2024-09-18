@@ -31,7 +31,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("basics.MordantKt")
+    mainClass.set("MainKt")
 }
 
 ktor {
