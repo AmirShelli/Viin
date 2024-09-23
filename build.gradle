@@ -31,7 +31,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("MainRefactoredKt")
+    mainClass.set("MainKt")
 }
 
 ktor {

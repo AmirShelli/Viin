@@ -5,12 +5,13 @@ import java.io.File
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+
     val terminal = Terminal()  // Assuming you're using a terminal for input/output
     val cursor = TerminalCursor(terminal)
     val viewport = Viewport(terminal.info.width, terminal.info.height - 1)
     val renderer = TerminalRenderer(terminal)
 
-    val content = mutableListOf<String>()  // Load or initialize your document content
+    val content = initContent(args[0])  // Load or initialize your document content
     val editor = Editor(cursor, viewport, renderer, InputHandler(editor = null), content)  // Temp null for now
 
     // Now we can initialize the input handler with the editor itself
@@ -33,9 +34,8 @@ class Editor(
     val content: MutableList<String>
 ) {
 
-    enum class SearchDirection { FORWARD, BACKWARD }
-
-    var searchDirection = SearchDirection.FORWARD
+//    enum class SearchDirection { FORWARD, BACKWARD }
+//    var searchDirection = SearchDirection.FORWARD
 
     var statusMessage = ""
 
@@ -44,16 +44,23 @@ class Editor(
             while (true) {
                 statusMessage = "Lines: ${content.size}, X: ${cursor.x}, Y: ${cursor.y}"
 
-                // Calculate visible content based on viewport offsets
-                val visibleContent = getVisibleContent()
-
                 // Render the screen
-                renderer.refreshScreen(visibleContent, cursor, statusMessage)
+                onRenderRequest()
 
                 // Handle user input
                 inputHandler.handleKey(rawMode.readKey())
             }
         }
+    }
+
+    fun updateStatusMessage(newStatusMessage: String) {
+        statusMessage = newStatusMessage
+        onRenderRequest()
+    }
+
+    fun onRenderRequest() {
+        val visibleContent = getVisibleContent()
+        renderer.refreshScreen(visibleContent, cursor, statusMessage)
     }
 
     private fun getVisibleContent(): List<String> {
@@ -90,11 +97,17 @@ class Editor(
     }
 
     private fun moveCursorDown() {
-        TODO("Not yet implemented")
+        if (cursor.y < content.size - 1) {
+            val newX = cursor.x.coerceAtMost(content[cursor.y + 1].length)
+            cursor.moveTo(newX, cursor.y + 1)
+        }
     }
 
     private fun moveCursorUp() {
-        TODO("Not yet implemented")
+        if (cursor.y > 0) {
+            val newX = cursor.x.coerceAtMost(content[cursor.y - 1].length)
+            cursor.moveTo(newX, cursor.y - 1)
+        }
     }
 
     fun moveCursorToEndOfLine() {
@@ -141,9 +154,7 @@ class InputHandler(val editor: Editor?) {
         val sb = StringBuilder(":")
         terminal.enterRawMode().use { rawMode ->
             while (true) {
-                //TODO() should rederer depend on the editor???
-//                editor.changeStatus(sb.toString())
-//                editor?.renderer?.refreshScreen()
+                editor?.updateStatusMessage(sb.toString())
                 val command = rawMode.readKey().key
                 if (command.length == 1)
                     sb.append(command)
@@ -173,6 +184,7 @@ interface Cursor {
     fun moveBy(deltaX: Int, deltaY: Int)
 }
 
+//TODO() read about the observer pattern
 
 class TerminalCursor(private val terminal: Terminal) : Cursor {
     override var x: Int = 0
