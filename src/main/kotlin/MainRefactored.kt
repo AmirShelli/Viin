@@ -7,9 +7,9 @@ import kotlin.system.exitProcess
 fun main(args: Array<String>) {
 
     val terminal = Terminal()  // Assuming you're using a terminal for input/output
-    val cursor = TerminalCursor(terminal)
     val viewport = Viewport(terminal.info.width, terminal.info.height - 1)
     val renderer = TerminalRenderer(terminal)
+    val cursor = TerminalCursor(terminal, viewport)
 
     val content = initContent(args[0])  // Load or initialize your document content
     val editor = Editor(cursor, viewport, renderer, InputHandler(editor = null), content)  // Temp null for now
@@ -33,6 +33,9 @@ class Editor(
     var inputHandler: InputHandler,
     val content: MutableList<String>
 ) {
+    init {
+        viewport.attachToCursor(cursor)
+    }
 
 //    enum class SearchDirection { FORWARD, BACKWARD }
 //    var searchDirection = SearchDirection.FORWARD
@@ -42,7 +45,7 @@ class Editor(
     fun run() {
         terminal.enterRawMode().use { rawMode ->
             while (true) {
-                statusMessage = "Lines: ${content.size}, X: ${cursor.x}, Y: ${cursor.y}"
+                statusMessage = "Lines: ${content.size}, X: ${cursor.x - viewport.offsetX}, Y: ${cursor.y - viewport.offsetY}"
 
                 // Render the screen
                 onRenderRequest()
@@ -72,7 +75,7 @@ class Editor(
                     (viewport.offsetX + viewport.width).coerceAtMost(line.length)
                 )
             } else {
-                "-"
+                ""
             }
         }
     }
@@ -182,17 +185,18 @@ interface Cursor {
     var y: Int
     fun moveTo(newX: Int, newY: Int)
     fun moveBy(deltaX: Int, deltaY: Int)
+    fun updateCursorPosition()
+    fun addPositionListener(listener: (Int, Int) -> Unit)
 }
 
-//TODO() read about the observer pattern
 
-class TerminalCursor(private val terminal: Terminal) : Cursor {
+class TerminalCursor(private val terminal: Terminal, private val viewport: Viewport) : Cursor {
     override var x: Int = 0
     override var y: Int = 0
 
     private val positionListeners = mutableListOf<(Int, Int) -> Unit>()
 
-    fun addPositionListener(listener: (Int, Int) -> Unit) {
+    override fun addPositionListener(listener: (Int, Int) -> Unit) {
         positionListeners.add(listener)
     }
 
@@ -205,15 +209,19 @@ class TerminalCursor(private val terminal: Terminal) : Cursor {
     override fun moveTo(newX: Int, newY: Int) {
         x = newX.coerceAtLeast(0)
         y = newY.coerceAtLeast(0)
-        terminal.cursor.move {
-            setPosition(x, y)
-        }
+
+        notifyPositionChanged()
     }
 
     override fun moveBy(deltaX: Int, deltaY: Int) {
         moveTo(x + deltaX, y + deltaY)
     }
 
+    override fun updateCursorPosition() {
+        terminal.cursor.move {
+            setPosition(x - viewport.offsetX, y - viewport.offsetY)
+        }
+    }
 }
 
 class Viewport(
@@ -225,7 +233,7 @@ class Viewport(
     var offsetY: Int = 0
         private set
 
-    fun attachToCursor(cursor: TerminalCursor) {
+    fun attachToCursor(cursor: Cursor) {
         cursor.addPositionListener { x, y ->
             adjustOffsets(x, y)
         }
@@ -256,7 +264,7 @@ interface Renderer {
     )
 }
 
-class TerminalRenderer(private val terminal: Terminal) : Renderer {
+class TerminalRenderer(val terminal: Terminal) : Renderer {
 
     override fun refreshScreen(
         visibleContent: List<String>,
@@ -264,14 +272,19 @@ class TerminalRenderer(private val terminal: Terminal) : Renderer {
         statusMessage: String
     ) {
         terminal.cursor.move {
+            setPosition(0, 0)
             clearScreen()  // Clear the terminal screen
         }
 
         val sb = StringBuilder()
 
         // Render the visible content within the viewport
-        visibleContent.forEach { line ->
-            sb.append(line).append("\r\n")
+        for (i in 0..terminal.info.height - 2) {
+            if (i < visibleContent.size)
+                sb.append(visibleContent.get(i))
+            else
+                sb.append("-")
+            sb.append("\r\n")
         }
 
         // Render the status message
@@ -279,10 +292,7 @@ class TerminalRenderer(private val terminal: Terminal) : Renderer {
 
         // Print the final content to the terminal
         terminal.print(sb.toString())
+
+        cursor.updateCursorPosition()
     }
 }
-
-
-
-
-
