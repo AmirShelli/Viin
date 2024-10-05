@@ -196,28 +196,56 @@ class Editor(
     }
 
 
-    // TODO INSERT MODE NOW!!!
-    fun insertMode() {
-        updateStatusMessage("Insertion Mode")
-        terminal.enterRawMode().use { rawMode ->
-            while (true) {
-                onRenderRequest()
-                val key = rawMode.readKey().key
-                if (key.length == 1) {
-//                    insertChar(key)
-                }
-                else {
-                    when {
-                        key.equals("Escape") -> return
-                        key.equals("Backspace") -> deleteChar(cursorY + offsetY, cursorX + offsetX)
-                        key.equals("Enter") -> addNewLine(cursorY + offsetY, cursorX + offsetX)
-                        else -> moveCursor(key)
-                    }
-                }
+    fun handleInsertion(char: String) {
+        modifyContentAtCursor { currentLine, charPosition ->
+            currentLine.insertAt(charPosition, char)
+        }
+        cursor.moveBy(1, 0)
+    }
+
+    fun handleDeletion() {
+        modifyContentAtCursor { currentLine, charPosition ->
+            if (charPosition > 0) {
+                currentLine.removeAt(charPosition - 1)
+            } else {
+                currentLine
             }
         }
+        cursor.moveBy(-1, 0)
+    }
+
+    private fun modifyContentAtCursor(modify: (String, Int) -> String) {
+        val linePosition = cursor.y + viewport.offsetY
+        val charPosition = cursor.x + viewport.offsetX
+
+        val currentLine = content[linePosition]
+        content[linePosition] = modify(currentLine, charPosition)
+    }
+
+    private fun String.insertAt(index: Int, char: String): String {
+        return this.substring(0, index) + char + this.substring(index)
+    }
+
+    private fun String.removeAt(index: Int): String {
+        return this.substring(0, index) + this.substring(index + 1)
+    }
+
+    fun handleNewLine() {
+        val currentLine = content[cursor.y]
+
+        if (cursor.x < currentLine.length) {
+            val newLine = currentLine.substring(cursor.x)
+            content.add(cursor.y + 1, newLine)
+
+            content[cursor.y] = currentLine.substring(0, cursor.x)
+        } else {
+            content.add(cursor.y + 1, "")
+        }
+        cursor.moveTo(0,cursor.y + 1)
     }
 }
+
+
 
 //TODO make an a adapter class to abstract the terminal
 
@@ -275,9 +303,26 @@ class InputHandler(val editor: Editor?) {
                 editor?.quit()
             }
 
-            ":i" -> editor?.insertMode()
+            ":i" -> insertMode()
             ":f" -> editor?.search()
             else -> editor?.updateStatusMessage("Error: Unknown command '${command.substring(1)}'")
+        }
+    }
+
+    private fun insertMode() {
+        editor?.updateStatusMessage("Insertion Mode")
+        terminal.enterRawMode().use { rawMode ->
+            while (true) {
+                editor?.onRenderRequest()
+                val key = rawMode.readKey().key
+                when {
+                    key.length == 1 -> editor?.handleInsertion(key)
+                    key.equals("Escape") -> return
+                    key.equals("Backspace") -> editor?.handleDeletion()
+                    key.equals("Enter") -> editor?.handleNewLine()
+                    else -> editor?.moveCursor(key)
+                }
+            }
         }
     }
 }
