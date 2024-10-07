@@ -11,8 +11,7 @@ fun main(args: Array<String>) {
     val renderer = TerminalRenderer(terminal)
     val cursor = TerminalCursor(terminal, viewport)
 
-    val content = initContent(args[0])  // Load or initialize your document content
-    val editor = Editor(cursor, viewport, renderer, InputHandler(editor = null), content)  // Temp null for now
+    val editor = Editor(cursor, viewport, renderer, InputHandler(editor = null), filePath = args[0])  // Temp null for now
 
     // Now we can initialize the input handler with the editor itself
     val inputHandler = InputHandler(editor)
@@ -21,17 +20,15 @@ fun main(args: Array<String>) {
     editor.run()
 }
 
-fun initContent(filePath: String): MutableList<String> {
-    val file = File(filePath)
-    return file.readLines().toMutableList()
-}
+
 
 class Editor(
     val cursor: Cursor,
     val viewport: Viewport,
     val renderer: Renderer,
     var inputHandler: InputHandler,
-    val content: MutableList<String>
+    val filePath: String
+
 ) {
     init {
         viewport.attachToCursor(cursor)
@@ -40,6 +37,12 @@ class Editor(
     enum class SearchDirection { FORWARD, BACKWARD }
 
     var statusMessage = ""
+    val content: MutableList<String> = initContent(filePath)
+
+    private fun initContent(filePath: String): MutableList<String> {
+        val file = File(filePath)
+        return file.readLines().toMutableList()
+    }
 
     fun run() {
         terminal.enterRawMode().use { rawMode ->
@@ -197,38 +200,56 @@ class Editor(
 
 
     fun handleInsertion(char: String) {
-        modifyContentAtCursor { currentLine, charPosition ->
-            currentLine.insertAt(charPosition, char)
+        val linePosition = cursor.y + viewport.offsetY
+        val charPosition = cursor.x + viewport.offsetX
+
+        modifyContentAtCursor(linePosition) { currentLine, pos ->
+            currentLine.insertCharAt(charPosition, char)
         }
         cursor.moveBy(1, 0)
     }
 
     fun handleDeletion() {
-        modifyContentAtCursor { currentLine, charPosition ->
-            if (charPosition > 0) {
-                currentLine.removeAt(charPosition - 1)
-            } else {
-                currentLine
+        val linePosition = cursor.y + viewport.offsetY
+        val charPosition = cursor.x + viewport.offsetX
+
+        if (charPosition > 0) {
+            modifyContentAtCursor(linePosition) { currentLine, pos ->
+                currentLine.removeCharAt(pos - 1)
             }
+            cursor.moveBy(-1, 0)
+        } else if (linePosition > 0) {
+            cursor.moveTo(content[linePosition - 1].length, linePosition - 1)
+            mergeWithPreviousLine(linePosition)
         }
-        cursor.moveBy(-1, 0)
     }
 
-    private fun modifyContentAtCursor(modify: (String, Int) -> String) {
-        val linePosition = cursor.y + viewport.offsetY
+    private fun mergeWithPreviousLine(linePosition: Int) {
+        val currentLine = content[linePosition]
+        val previousLinePosition = linePosition - 1
+        val previousLine = content[previousLinePosition]
+
+        val mergedLine = previousLine + currentLine
+
+        content[previousLinePosition] = mergedLine
+        content.removeAt(linePosition)
+    }
+
+    private fun modifyContentAtCursor(linePosition: Int, modify: (String, Int) -> String) {
         val charPosition = cursor.x + viewport.offsetX
 
         val currentLine = content[linePosition]
         content[linePosition] = modify(currentLine, charPosition)
     }
 
-    private fun String.insertAt(index: Int, char: String): String {
+    private fun String.insertCharAt(index: Int, char: String): String {
         return this.substring(0, index) + char + this.substring(index)
     }
 
-    private fun String.removeAt(index: Int): String {
+    private fun String.removeCharAt(index: Int): String {
         return this.substring(0, index) + this.substring(index + 1)
     }
+
 
     fun handleNewLine() {
         val currentLine = content[cursor.y]
@@ -241,10 +262,17 @@ class Editor(
         } else {
             content.add(cursor.y + 1, "")
         }
-        cursor.moveTo(0,cursor.y + 1)
+        cursor.moveTo(0, cursor.y + 1)
+    }
+
+    fun saveToFile() {
+        File(filePath).printWriter().use { out ->
+            content.forEach {
+                out.println(it)
+            }
+        }
     }
 }
-
 
 
 //TODO make an a adapter class to abstract the terminal
@@ -297,14 +325,16 @@ class InputHandler(val editor: Editor?) {
     private fun handleCommand(command: String) {
         when (command) {
             ":q" -> editor?.quit()
-//            ":w" -> editor?.save()
+            ":w" -> editor?.saveToFile()
             ":wq", ":qw" -> {
-//                editor?.save()
+                editor?.saveToFile()
                 editor?.quit()
             }
 
             ":i" -> insertMode()
             ":f" -> editor?.search()
+
+            // TODO fix
             else -> editor?.updateStatusMessage("Error: Unknown command '${command.substring(1)}'")
         }
     }
@@ -450,10 +480,7 @@ class TerminalRenderer(val terminal: Terminal) : Renderer {
             sb.append("\r\n")
         }
 
-        // Render the status message
         sb.append(statusMessage)
-
-        // Print the final content to the terminal
         terminal.print(sb.toString())
 
         cursor.updateCursorPosition()
