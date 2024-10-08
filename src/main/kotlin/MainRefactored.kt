@@ -2,6 +2,7 @@ import com.github.ajalt.mordant.input.KeyboardEvent
 import com.github.ajalt.mordant.input.enterRawMode
 import com.github.ajalt.mordant.terminal.Terminal
 import java.io.File
+import java.lang.Thread.sleep
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -36,8 +37,10 @@ class Editor(
 
     enum class SearchDirection { FORWARD, BACKWARD }
 
+    var errorMessage = ""
     var statusMessage = ""
     val content: MutableList<String> = initContent(filePath)
+    var showError = false
 
     private fun initContent(filePath: String): MutableList<String> {
         val file = File(filePath)
@@ -47,9 +50,12 @@ class Editor(
     fun run() {
         terminal.enterRawMode().use { rawMode ->
             while (true) {
-                // Render the screen
-                updateStatusMessage("Lines: ${content.size}, X: ${cursor.x - viewport.offsetX}, Y: ${cursor.y - viewport.offsetY}")
-                // Handle user input
+                if (showError) {
+                    updateStatusMessage(errorMessage)
+                } else {
+                    updateStatusMessage("Lines: ${content.size}, X: ${cursor.x - viewport.offsetX}, Y: ${cursor.y - viewport.offsetY}")
+                }
+
                 inputHandler.handleKey(rawMode.readKey())
             }
         }
@@ -60,7 +66,13 @@ class Editor(
         onRenderRequest()
     }
 
+    fun updateErrorMessge(newErrorMessage: String) {
+        errorMessage = newErrorMessage
+        showError = true
+    }
+
     fun onRenderRequest() {
+        showError = false
         val visibleContent = getVisibleContent()
         renderer.refreshScreen(visibleContent, cursor, statusMessage)
     }
@@ -305,8 +317,8 @@ class InputHandler(val editor: Editor?) {
                     }
 
                     keyEvent == "Backspace" && commandBuffer.length > 1 -> {
-                        // Prevent removing the initial ':'
-                        commandBuffer.deleteCharAt(commandBuffer.length - 1)
+                        if(commandBuffer.length > 1)
+                            commandBuffer.deleteCharAt(commandBuffer.length - 1)
                     }
 
                     keyEvent == "Enter" -> {
@@ -315,7 +327,7 @@ class InputHandler(val editor: Editor?) {
 
                     keyEvent == "Escape" -> {
                         editor?.updateStatusMessage("")
-                        return ""  // Return an empty command to indicate cancellation
+                        return ""
                     }
                 }
             }
@@ -334,8 +346,9 @@ class InputHandler(val editor: Editor?) {
             ":i" -> insertMode()
             ":f" -> editor?.search()
 
-            // TODO fix
-            else -> editor?.updateStatusMessage("Error: Unknown command '${command.substring(1)}'")
+            else -> {
+                editor?.updateErrorMessge( "Error: Unknown command '${command.substring(1)}'")
+            }
         }
     }
 
